@@ -42,15 +42,15 @@ class HDFSLineageDispatcher(filename: String, permission: FsPermission, bufferSi
     permission = new FsPermission(conf.getRequiredObject(FilePermissionsKey).toString),
     bufferSize = conf.getRequiredInt(BufferSizeKey)
   )
-
+//zaca
   @volatile
   private var _lastSeenPlan: ExecutionPlan = _
 
   override def name = "HDFS"
 
-  override def send(plan: ExecutionPlan): Unit = {
-    this._lastSeenPlan = plan
-  }
+//  override def send(plan: ExecutionPlan): Unit = {
+//    this._lastSeenPlan = plan
+//  }
 
 //  override def send(event: ExecutionEvent): Unit = {
 //    if (this._lastSeenPlan == null || this._lastSeenPlan.id.get != event.planId)
@@ -90,6 +90,7 @@ class HDFSLineageDispatcher(filename: String, permission: FsPermission, bufferSi
       throw new IllegalStateException("send(event) must be called strictly after send(plan) method with matching plan ID")
 
     try {
+      println("Hi")
       val sparkContext = SparkContext.getOrCreate()
 
       val lineageBaseDir = sparkContext.getConf.get(

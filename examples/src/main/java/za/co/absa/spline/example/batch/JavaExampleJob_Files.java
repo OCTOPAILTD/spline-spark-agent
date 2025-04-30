@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-package za.co.absa.spline.example.batch;
+package src.main.java.za.co.absa.spline.example.batch;
 
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
 import za.co.absa.spline.agent.AgentConfig;
 import za.co.absa.spline.harvester.SparkLineageInitializer;
+import za.co.absa.spline.harvester.dispatcher.HDFSLineageDispatcher;
+import za.co.absa.spline.harvester.listener.SplineQueryExecutionListener;
 
 import java.io.File;
 import java.util.Arrays;
@@ -37,7 +39,7 @@ public class JavaExampleJob_Files {
             .config("spark.spline.mode", "ENABLED")  // ✅ Enable Spline
             .config("spark.spline.lineageDispatcher", "hdfs")  // ✅ Use HDFS dispatcher
             .config("spark.spline.lineageDispatcher.hdfs.className", "za.co.absa.spline.harvester.dispatcher.HDFSLineageDispatcher") // 🔥 Fix: Define HDFS Dispatcher
-            .config("spark.spline.lineageDispatcher.hdfs.directory", "file:///C:/tmpx")  // ✅ Store lineage files in local storage
+            .config("spark.spline.lineageDispatcher.hdfs.directory", "file:///C:/spline")  // ✅ Store lineage files in local storage
             .config("spark.spline.lineageDispatcher.hdfs.fileNamePrefix", "lineage_")  // ✅ File naming pattern
             .getOrCreate();
 
@@ -46,6 +48,15 @@ public class JavaExampleJob_Files {
 // Enable Spline Tracking
         AgentConfig splineConfig = AgentConfig.builder().build();
         SparkLineageInitializer.enableLineageTracking(session, splineConfig);
+        System.out.println("Spline Listeners: " + splineConfig.getConfigurationListeners().size());
+
+        System.out.println("Using HDFSLineageDispatcher from: " +
+            HDFSLineageDispatcher.class.getProtectionDomain().getCodeSource().getLocation());
+
+
+
+
+
 
         System.out.println("Spline Mode: " + session.conf().get("spark.spline.mode", "NOT SET"));
         System.out.println("Spline HDFS: " + session.conf().get("spark.spline.lineageDispatcher.hdfs.directory", "NOT SET"));
@@ -55,7 +66,6 @@ public class JavaExampleJob_Files {
         // This step is optional - see https://github.com/AbsaOSS/spline-spark-agent#programmatic-initialization
 
 
-        SparkLineageInitializer.enableLineageTracking(session, splineConfig);
 
         // Sample Spark Job
         session.read()
@@ -65,9 +75,9 @@ public class JavaExampleJob_Files {
             .as("source")
             .write()
             .mode(SaveMode.Overwrite)
-            .csv("data/output/batch/java-sample2.csv");
+            .csv("data/output/batch/java-sample3.csv");
 
-        printLineageFiles("/tmp/spline");
+//        printLineageFiles("/tmp/spline");
 
     }
 

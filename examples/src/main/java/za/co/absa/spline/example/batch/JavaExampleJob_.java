@@ -14,44 +14,37 @@
  * limitations under the License.
  */
 
-package za.co.absa.spline.example.batch;
+package src.main.java.za.co.absa.spline.example.batch;
 
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
 import za.co.absa.spline.agent.AgentConfig;
 import za.co.absa.spline.harvester.SparkLineageInitializer;
 
-public class JavaExampleJob {
+public class JavaExampleJob_ {
 
     public static void main(String[] args) {
-
-
 
         final SparkSession session = SparkSession.builder()
             .appName("java example app")
             .master("local[*]")
             .config("spark.driver.host", "localhost")
-            .config("spark.spline.mode", "ENABLED")  // ✅ Force enable Spline
-            .config("spark.spline.lineageDispatcher", "http")  // ✅ Set dispatcher
-            .config("spark.spline.lineageDispatcher.http.producer.url", "https://ucb.spline.octopai.com/producer") // ✅ Set Producer URL
+            .config("spark.spline.mode", "ENABLED")  // ✅ Enable Spline
+            .config("spark.spline.lineageDispatcher", "http")  // ✅ Use HDFS dispatcher
+            .config("spark.spline.lineageDispatcher.hdfs.className", "za.co.absa.spline.harvester.dispatcher.HttpLineageDispatcher") // 🔥 Fix: Define HDFS Dispatcher
+            .config("spline.lineageDispatcher.http.producer.url", "https://ucb.spline.octopai.com/producer")  // ✅ File naming pattern
             .getOrCreate();
 
 
         // Explicitly enable Spline lineage tracking
-        AgentConfig splineConfig = AgentConfig.builder().build();
-        SparkLineageInitializer.enableLineageTracking(session, splineConfig);
-
-        System.out.println("Spline Mode: " + session.conf().get("spark.spline.mode", "NOT SET"));
-        System.out.println("Spline Producer URL: " + session.conf().get("spark.spline.lineageDispatcher.http.producer.url", "NOT SET"));
-
-
-        // Explicitly enable Spline lineage tracking
         // This step is optional - see https://github.com/AbsaOSS/spline-spark-agent#programmatic-initialization
-
+        final AgentConfig splineConfig = AgentConfig.builder().build();
 
         SparkLineageInitializer.enableLineageTracking(session, splineConfig);
+        System.out.println("Spline Listeners: " + splineConfig.getConfigurationListeners().size());
 
-        // Sample Spark Job
+
+        // run a Spark job as usual
         session.read()
             .option("header", "true")
             .option("inferSchema", "true")
