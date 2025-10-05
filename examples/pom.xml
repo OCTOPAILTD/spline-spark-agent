@@ -1,163 +1,45 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
-  ~ Copyright 2017 ABSA Group Limited
-  ~
-  ~ Licensed under the Apache License, Version 2.0 (the "License");
-  ~ you may not use this file except in compliance with the License.
-  ~ You may obtain a copy of the License at
-  ~
-  ~     http://www.apache.org/licenses/LICENSE-2.0
-  ~
-  ~ Unless required by applicable law or agreed to in writing, software
-  ~ distributed under the License is distributed on an "AS IS" BASIS,
-  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  ~ See the License for the specific language governing permissions and
-  ~ limitations under the License.
-  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <artifactId>examples_2.12</artifactId>
-    <packaging>jar</packaging>
-
-    <parent>
-        <groupId>za.co.absa.spline.agent.spark</groupId>
-        <artifactId>spline-spark-agent_2.12</artifactId>
-        <relativePath>../pom.xml</relativePath>
-        <version>2.3.0-SNAPSHOT</version>
-    </parent>
+    <groupId>za.co.absa.spline</groupId>
+    <artifactId>kafka-bible-stream</artifactId>
+    <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <docker.imageName>spline-spark-agent</docker.imageName>
-        <delta.artifactId>delta-core_${scala.binary.version}</delta.artifactId>
+        <scala.binary.version>2.11</scala.binary.version>
+        <spark.version>2.4.8</spark.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>za.co.absa.spline.agent.spark</groupId>
-            <artifactId>agent-core_${scala.binary.version}</artifactId>
-            <version>${project.version}</version>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_2.11</artifactId>
+            <version>2.4.8</version>
         </dependency>
         <dependency>
             <groupId>org.apache.spark</groupId>
-            <artifactId>spark-core_${scala.binary.version}</artifactId>
-            <version>${spark.version}</version>
-            <scope>compile</scope>
+            <artifactId>spark-sql_2.11</artifactId>
+            <version>2.4.8</version>
         </dependency>
         <dependency>
             <groupId>org.apache.spark</groupId>
-            <artifactId>spark-sql_${scala.binary.version}</artifactId>
-            <version>${spark.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>commons-io</groupId>
-            <artifactId>commons-io</artifactId>
-        </dependency>
-
-        <!-- runtime dependencies -->
-
-        <dependency>
-            <groupId>com.databricks</groupId>
-            <artifactId>spark-xml_${scala.binary.version}</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.crealytics</groupId>
-            <artifactId>spark-excel_${scala.binary.version}</artifactId>
-            <scope>runtime</scope>
+            <artifactId>spark-sql-kafka-0-10_2.11</artifactId>
+            <version>2.4.8</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-            <scope>runtime</scope>
+            <version>2.4.1</version> <!-- Compatible -->
         </dependency>
         <dependency>
-            <groupId>com.google.cloud.spark</groupId>
-            <artifactId>spark-bigquery-with-dependencies_${scala.binary.version}</artifactId>
-            <version>0.22.1</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.delta</groupId>
-            <artifactId>${delta.artifactId}</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <scope>runtime</scope>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.11.12</version>
         </dependency>
     </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.rat</groupId>
-                <artifactId>apache-rat-plugin</artifactId>
-                <configuration>
-                    <excludes combine.children="append">
-                        <exclude>data/**</exclude>
-                        <exclude>spark-warehouse/**</exclude>
-                        <exclude>metastore_db/**</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-            <!-- Copy dependencies -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.6.0</version>
-                <executions>
-                    <execution>
-                        <id>copy-dependencies</id>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}/libs</outputDirectory>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <!-- Enable docker build -->
-            <plugin>
-                <groupId>io.fabric8</groupId>
-                <artifactId>docker-maven-plugin</artifactId>
-                <inherited>false</inherited>
-                <configuration>
-                    <skip>false</skip>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-
-    <profiles>
-        <profile>
-            <id>google</id>
-            <!-- the profile is required to run `BigQueryExample` -->
-            <dependencies>
-                <dependency>
-                    <groupId>org.apache.spark</groupId>
-                    <artifactId>spark-mllib_${scala.binary.version}</artifactId>
-                    <version>${spark.version}</version>
-                    <scope>runtime</scope>
-                </dependency>
-                <dependency>
-                    <groupId>com.google.cloud.bigdataoss</groupId>
-                    <artifactId>gcs-connector</artifactId>
-                    <version>hadoop2-2.0.1</version>
-                    <scope>runtime</scope>
-                </dependency>
-            </dependencies>
-        </profile>
-
-        <profile>
-            <id>spark-3.5</id>
-            <properties>
-                <delta.artifactId>delta-spark_${scala.binary.version}</delta.artifactId>
-            </properties>
-        </profile>
-    </profiles>
 
 </project>
