@@ -30,6 +30,8 @@ import za.co.absa.spline.harvester.json.HarvesterJsonSerDe
 import za.co.absa.spline.producer.model.{ExecutionEvent, ExecutionPlan}
 
 import java.net.URI
+import java.nio.charset.StandardCharsets
+import java.util.UUID
 import scala.concurrent.blocking
 
 @Experimental
@@ -52,39 +54,6 @@ class HDFSLineageDispatcher(filename: String, permission: FsPermission, bufferSi
     this._lastSeenPlan = plan
   }
 
-//  override def send(event: ExecutionEvent): Unit = {
-//    if (this._lastSeenPlan == null || this._lastSeenPlan.id.get != event.planId)
-//      throw new IllegalStateException("send(event) must be called strictly after send(plan) method with matching plan ID")
-//
-//    try {
-//      // ✅ Fetch SparkContext from the active session
-//      val sparkContext = SparkContext.getOrCreate()
-//
-//      // ✅ Read lineage directory from SparkContext config
-//      val lineageDir = sparkContext.getConf.get(
-//        "spark.spline.lineageDispatcher.hdfs.directory",
-//        "file:///C:/tmp" // Default to local storage on Windows
-//      )
-//
-//      // ✅ Extract executionPlanID
-//      val executionPlanID = this._lastSeenPlan.id.getOrElse("unknown_plan")
-//
-//      // ✅ Generate a unique filename with executionPlanID
-//      val timestamp = System.currentTimeMillis()
-//      val path = s"$lineageDir/lineage_${executionPlanID}.json"
-//
-//      val planWithEvent = Map(
-//        "executionPlan" -> this._lastSeenPlan,
-//        "executionEvent" -> event
-//      )
-//
-//      import HarvesterJsonSerDe.impl._
-//      persistToHadoopFs(planWithEvent.toJson, path)
-//    } finally {
-//      this._lastSeenPlan = null
-//    }
-//  }
-
   override def send(event: ExecutionEvent): Unit = {
     if (this._lastSeenPlan == null || this._lastSeenPlan.id.get != event.planId)
       throw new IllegalStateException("send(event) must be called strictly after send(plan) method with matching plan ID")
@@ -97,76 +66,150 @@ class HDFSLineageDispatcher(filename: String, permission: FsPermission, bufferSi
         "file:///C:/tmp" // Default to local storage on Windows
       )
 
-      // ✅ Extract executionPlanID
       val executionPlanID = this._lastSeenPlan.id.getOrElse("unknown_plan")
-
-      // ✅ Extract executionPlan name
       val executionPlanName = this._lastSeenPlan.name.replaceAll("[^a-zA-Z0-9_\\-]", "_")
+      val runID = event.extra.get("appId").map(_.toString).getOrElse("unknown_runID")
 
-      // ✅ Extract executionEvent appId
-      val appId = event.extra.get("appId").map(_.toString).getOrElse("unknown_appId")
+      val appDir = s"$lineageBaseDir/$executionPlanName"
+      val runDir = s"$appDir/$runID"
 
-      // ✅ Construct the directory path dynamically
-      val fullDirPath = s"$lineageBaseDir/$executionPlanName/$appId"
+      // Best-effort cleanup of previous runs
+      cleanupOldRunFolders(appDir, runID)
 
-      // ✅ Construct the full file path
-      val filePath = s"$fullDirPath/lineage_${executionPlanID}.json"
+      val fileName = s"lineage_${executionPlanID}.json"
 
-      // ✅ Create a JSON structure
+      // Build JSON payload
       val planWithEvent = Map(
         "executionPlan" -> this._lastSeenPlan,
         "executionEvent" -> event
       )
-
       import HarvesterJsonSerDe.impl._
-      persistToHadoopFs(planWithEvent.toJson, filePath)
+      val content = planWithEvent.toJson
+
+      // Atomically materialize the run folder & file
+      persistRunFolderAtomically(runDir, fileName, content)
     } finally {
       this._lastSeenPlan = null
     }
   }
 
-//  private def persistToHadoopFs(content: String, fullLineagePath: String): Unit = blocking {
-//    val (fs, path) = pathStringToFsWithPath(fullLineagePath)
-//
-//    // Ensure the central lineage directory exists
-//    val parentDir = path.getParent
-//    if (!fs.exists(parentDir)) {
-//      fs.mkdirs(parentDir)
-//    }
-//
-//    logDebug(s"Opening HadoopFs output stream to $path")
-//
-//    val replication = fs.getDefaultReplication(path)
-//    val blockSize = fs.getDefaultBlockSize(path)
-//    val outputStream = fs.create(path, permission, true, bufferSize, replication, blockSize, null)
-//
-//    logDebug(s"Writing lineage to $path")
-//    using(outputStream) {
-//      _.write(content.getBytes("UTF-8"))
-//    }
-//  }
+  /**
+   * Deletes all runID folders except the current one
+   * @param appDirPath Path to the app directory
+   * @param currentRunID The current runID to keep
+   */
+  private def cleanupOldRunFolders(appDirPath: String, currentRunID: String): Unit = {
+    try {
+      val (fs, appPath) = pathStringToFsWithPath(appDirPath)
+
+      if (fs.exists(appPath) && fs.getFileStatus(appPath).isDirectory) {
+        val statuses = fs.listStatus(appPath)
+        statuses.foreach { status =>
+          if (status.isDirectory && status.getPath.getName != currentRunID) {
+            logInfo(s"Deleting old runID folder: ${status.getPath}")
+            fs.delete(status.getPath, true) // recursive delete
+          }
+        }
+      }
+    } catch {
+      case e: Exception =>
+        logWarning(s"Failed to cleanup old run folders in $appDirPath", e)
+    }
+  }
+
+  /**
+   * Atomically create a run directory with its lineage JSON file inside.
+   * Strategy:
+   *  1) Ensure parent exists (mkdirs is idempotent)
+   *  2) Create a hidden temp directory next to the target
+   *  3) Write JSON to a temp file, then rename temp file -> final name inside temp dir
+   *  4) Rename temp dir -> final run dir (atomic on HDFS)
+   */
+  private def persistRunFolderAtomically(finalRunDirStr: String, fileName: String, content: String): Unit = blocking {
+    val (fs, finalRunDir) = pathStringToFsWithPath(finalRunDirStr)
+    val parent = finalRunDir.getParent
+
+    // 1) Ensure parent exists
+    if (!fs.exists(parent)) {
+      fs.mkdirs(parent)
+      try fs.setPermission(parent, permission) catch { case _: Throwable => () }
+    }
+
+    // 2) Create temp sibling directory
+    val tmpDir = new Path(parent, s".tmp-${finalRunDir.getName}-${UUID.randomUUID().toString}")
+    var tmpDirCreated = false
+    try {
+      if (!fs.mkdirs(tmpDir)) {
+        throw new RuntimeException(s"Failed to create temp directory: $tmpDir")
+      }
+      tmpDirCreated = true
+      try fs.setPermission(tmpDir, permission) catch { case _: Throwable => () }
+
+      // 3) Write the file atomically inside the temp dir
+      val finalFileInTmp = new Path(tmpDir, fileName)
+      writeFileAtomically(fs, finalFileInTmp, content.getBytes(StandardCharsets.UTF_8))
+
+      // 4) Rename the temp dir -> final dir (atomic on HDFS)
+      if (fs.exists(finalRunDir)) {
+        throw new IllegalStateException(s"Final run directory already exists: $finalRunDir")
+      }
+      logDebug(s"Renaming $tmpDir -> $finalRunDir (atomic on HDFS)")
+      if (!fs.rename(tmpDir, finalRunDir)) {
+        throw new RuntimeException(s"Failed to atomically rename $tmpDir to $finalRunDir")
+      }
+
+      try fs.setPermission(finalRunDir, permission) catch { case _: Throwable => () }
+    } catch {
+      case e: Throwable =>
+        if (tmpDirCreated) {
+          try fs.delete(tmpDir, true) catch { case _: Throwable => () }
+        }
+        throw e
+    }
+  }
+
+  /**
+   * Write a single file atomically via temp-sibling + rename.
+   */
+  private def writeFileAtomically(fs: FileSystem, finalPath: Path, bytes: Array[Byte]): Unit = {
+    val parent = finalPath.getParent
+    if (!fs.exists(parent)) {
+      fs.mkdirs(parent)
+    }
+
+    val tmpFile = new Path(parent, s".${finalPath.getName}.tmp-${UUID.randomUUID().toString}")
+    val replication = fs.getDefaultReplication(finalPath)
+    val blockSize = fs.getDefaultBlockSize(finalPath)
+
+    logDebug(s"Creating temp file $tmpFile")
+    val out = fs.create(tmpFile, permission, true, bufferSize, replication, blockSize, null)
+    try {
+      out.write(bytes)
+      // Best-effort durability hints; on HDFS these are meaningful.
+      out.hflush()
+      out.hsync()
+    } finally {
+      out.close()
+    }
+
+    try fs.setPermission(tmpFile, permission) catch { case _: Throwable => () }
+
+    logDebug(s"Renaming $tmpFile -> $finalPath (atomic on HDFS)")
+    if (!fs.rename(tmpFile, finalPath)) {
+      try fs.delete(tmpFile, false) catch { case _: Throwable => () }
+      throw new RuntimeException(s"Failed to atomically rename $tmpFile to $finalPath")
+    }
+  }
+
+  // Kept for compatibility: atomic-at-file-level write for a direct full path
   private def persistToHadoopFs(content: String, fullLineagePath: String): Unit = blocking {
     val (fs, path) = pathStringToFsWithPath(fullLineagePath)
-
-    // Ensure the entire directory structure exists
     val parentDir = path.getParent
     if (!fs.exists(parentDir)) {
       fs.mkdirs(parentDir)
     }
-
-    logDebug(s"Opening HadoopFs output stream to $path")
-
-    val replication = fs.getDefaultReplication(path)
-    val blockSize = fs.getDefaultBlockSize(path)
-    val outputStream = fs.create(path, permission, true, bufferSize, replication, blockSize, null)
-
-    logDebug(s"Writing lineage to $path")
-    using(outputStream) {
-      _.write(content.getBytes("UTF-8"))
-    }
+    writeFileAtomically(fs, path, content.getBytes(StandardCharsets.UTF_8))
   }
-
-
 }
 
 object HDFSLineageDispatcher {
@@ -188,8 +231,7 @@ object HDFSLineageDispatcher {
     pathString.toSimpleS3Location match {
       case Some(s3Location) =>
         val s3Uri = new URI(s3Location.asSimpleS3LocationString) // s3://<bucket>
-        val s3Path = new Path(s"/${s3Location.path}") // /<text-file-object-path>
-
+        val s3Path = new Path(s"/${s3Location.path}")            // /<text-file-object-path>
         val fs = FileSystem.get(s3Uri, HadoopConfiguration)
         (fs, s3Path)
 

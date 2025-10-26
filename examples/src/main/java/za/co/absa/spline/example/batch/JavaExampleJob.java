@@ -33,7 +33,7 @@ public class JavaExampleJob {
             .config("spark.driver.host", "localhost")
             .config("spark.spline.mode", "ENABLED")  // ✅ Force enable Spline
             .config("spark.spline.lineageDispatcher", "http")  // ✅ Set dispatcher
-            .config("spark.spline.lineageDispatcher.http.producer.url", "https://ucb.spline.octopai.com/producer") // ✅ Set Producer URL
+            .config("spark.spline.lineageDispatcher.http.producer.url", "https://tenant.spline.octopai.com/producer") // ✅ Set Producer URL
             .getOrCreate();
 
 
