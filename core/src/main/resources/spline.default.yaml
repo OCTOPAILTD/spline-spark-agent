@@ -32,6 +32,10 @@ spline:
   # - ALL         (capture all executions regardless of the error type)
   sql.failure.capture: NON_FATAL
 
+  # Additional class name prefixes permitted for dynamic dispatcher/filter/plugin loading
+  security:
+    allowedClassPrefixes: []
+
   # Strategy for dealing with writes in ignore mode that doesn't provide info whether the file was actually written
   IWDStrategy:
     ~: default
@@ -58,7 +62,6 @@ spline:
       producer: "https://ucb.spline.octopai.com/producer"
       timeout.connection: 2000
       timeout.read: 120000
-      disableSslValidation: false
 
       # Spline Producer API version to use.
       # If unspecified, the protocol version is determined from the endpoint handshake response.
@@ -69,7 +72,7 @@ spline:
       # If unspecified, the request compression is negotiated with the endpoint, otherwise it's disabled.
       requestCompression: # true | false
 
-      # Authentication config
+      # Authentication config (production deployments should use OAUTH; see producer.api OpenAPI securitySchemes)
       authentication:
         type: NONE # NONE | OAUTH
         # For the OAUTH type the following properties should be set:
@@ -145,7 +148,7 @@ spline:
       # the size of the buffer to be used
       fileBufferSize: 4096
       # file/directory permissions, provided as umask string, either in octal or symbolic format
-      filePermissions: 777
+      filePermissions: 750
 
     # -------------------------------------------
     # Open Lineage HTTP dispatcher
@@ -154,7 +157,6 @@ spline:
       className: za.co.absa.spline.harvester.dispatcher.HttpOpenLineageDispatcher
       timeout.connection: 1000
       timeout.read: 20000
-      disableSslValidation: false
       namespace: default
       # Spline Producer API version
       apiVersion: "1.2"
@@ -238,9 +240,11 @@ spline:
     # -------------------------------------------
     userExtraMeta:
       className: za.co.absa.spline.harvester.postprocessing.metadata.MetadataCollectingFilter
-      # rules are defined in a JSON format
-      # can be a json string or url to json file
+      # rules must be inline JSON (URL loading is not supported)
       rules: { }
+      # Allowlists for $jvm and $env template variables (deny by default when empty)
+      allowedJvmProperties: []
+      allowedEnvVariables: []
 
   # Plugins configuration.
   # The `key` is the fully specified plugin class name.

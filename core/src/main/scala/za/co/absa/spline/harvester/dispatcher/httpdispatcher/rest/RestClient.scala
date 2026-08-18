@@ -18,7 +18,6 @@ package za.co.absa.spline.harvester.dispatcher.httpdispatcher.rest
 
 import org.apache.commons.configuration.Configuration
 import org.apache.spark.internal.Logging
-import scalaj.http.HttpOptions.HttpOption
 import scalaj.http.{BaseHttp, HttpOptions}
 import za.co.absa.spline.commons.lang.extensions.AnyExtension._
 import za.co.absa.spline.harvester.dispatcher.SplineHeaders
@@ -41,7 +40,6 @@ object RestClient extends Logging {
     baseURL: String,
     connTimeout: Duration,
     readTimeout: Duration,
-    disableSslValidation: Boolean,
     headers: Map[String, String],
     authConfig: Configuration
   ): RestClient = {
@@ -49,16 +47,7 @@ object RestClient extends Logging {
     logDebug(s"baseURL = $baseURL")
     logDebug(s"connTimeout = $connTimeout")
     logDebug(s"readTimeout = $readTimeout")
-    logDebug(s"disableSslValidation = $disableSslValidation")
     logDebug(s"headers = $headers")
-
-    val maybeDisableSslValidationOption: Option[HttpOption] =
-      if (disableSslValidation) {
-        logWarning(s"SSL validation is DISABLED -- not recommended for production!")
-        Some(HttpOptions.allowUnsafeSSL)
-      } else {
-        None
-      }
 
     //noinspection ConvertExpressionToSAM
     new RestClient {
@@ -66,7 +55,6 @@ object RestClient extends Logging {
         baseHttp(s"$baseURL/$resource")
           .option(HttpOptions.connTimeout(connTimeout.toMillis.toInt))
           .option(HttpOptions.readTimeout(readTimeout.toMillis.toInt))
-          .having(maybeDisableSslValidationOption)(_ option _)
           .header(SplineHeaders.Timeout, readTimeout.toMillis.toString)
           .headers(headers)
           .compress(true),
