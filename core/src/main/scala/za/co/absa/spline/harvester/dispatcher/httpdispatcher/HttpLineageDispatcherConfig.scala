@@ -29,7 +29,6 @@ object HttpLineageDispatcherConfig {
   val ProducerUrlProperty = "producer.url"
   val ConnectionTimeoutMsKey = "timeout.connection"
   val ReadTimeoutMsKey = "timeout.read"
-  val DisableSslValidation = "disableSslValidation"
   val ApiVersion = "apiVersion"
   val RequestCompression = "requestCompression"
   val Header = "header"
@@ -41,7 +40,6 @@ class HttpLineageDispatcherConfig(config: Configuration) {
   val producerUrl: String = config.getRequiredString(ProducerUrlProperty)
   val connTimeout: Duration = config.getRequiredLong(ConnectionTimeoutMsKey).millis
   val readTimeout: Duration = config.getRequiredLong(ReadTimeoutMsKey).millis
-  val disableSslValidation: Boolean = config.getRequiredBoolean(DisableSslValidation)
   val headers: Map[String, String] = config.subset(Header).toMap[String]
   val authConfig: Configuration = config.subset(AuthenticationProperty)
 

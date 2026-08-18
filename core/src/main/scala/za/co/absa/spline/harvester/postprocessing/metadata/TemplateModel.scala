@@ -17,13 +17,16 @@
 package za.co.absa.spline.harvester.postprocessing.metadata
 
 import org.apache.spark.internal.Logging
-import za.co.absa.spline.commons.reflect.extractors.SafeTypeMatchingExtractor
-import za.co.absa.spline.harvester.postprocessing.metadata.EvaluableNames._
-
-import javax.script.ScriptEngine
 import scala.util.{Failure, Success, Try}
 
-class DataTemplate(val extra: Map[String, Any], val labels: Map[String, Any]) extends Logging {
+class DataTemplate(
+  val extra: Map[String, Any],
+  val labels: Map[String, Any],
+  val securityContext: TemplateSecurityContext = TemplateSecurityContext()
+) extends Logging {
+
+  def this(extra: Map[String, Any], labels: Map[String, Any]) =
+    this(extra, labels, TemplateSecurityContext())
 
   def eval(bindings: Map[String, Any]): EvaluatedTemplate =
     Try(new EvaluatedTemplate(evalExtra(bindings), evalLabels(bindings))) match {
@@ -50,7 +53,7 @@ class DataTemplate(val extra: Map[String, Any], val labels: Map[String, Any]) ex
   private def evalValue(value: Any, bindings: Map[String, Any]): Any = value match {
     case m: Map[_, _] => m.transform((_, v) => evalValue(v, bindings))
     case s: Seq[_] => s.map(evalValue(_, bindings))
-    case e: Evaluable => e.eval(bindings)
+    case e: Evaluable => e.eval(bindings, securityContext)
     case v => v
   }
 }
@@ -89,35 +92,34 @@ object EvaluatedTemplate {
 
 
 sealed trait Evaluable {
-  def eval(bindings: Map[String, Any]): AnyRef
+  def eval(bindings: Map[String, Any], securityContext: TemplateSecurityContext): AnyRef
 }
 
 case class JVMProp(propName: String) extends Evaluable {
-  override def eval(bindings: Map[String, Any]): AnyRef = System.getProperty(propName)
+  override def eval(bindings: Map[String, Any], securityContext: TemplateSecurityContext): AnyRef = {
+    if (!securityContext.allowedJvmProperties.contains(propName)) {
+      throw new SecurityException(s"JVM property '$propName' is not in the allowedJvmProperties list")
+    }
+    System.getProperty(propName)
+  }
 }
 
 case class EnvVar(envName: String) extends Evaluable {
-  override def eval(bindings: Map[String, Any]): AnyRef = System.getenv(envName)
+  override def eval(bindings: Map[String, Any], securityContext: TemplateSecurityContext): AnyRef = {
+    if (!securityContext.allowedEnvVariables.contains(envName)) {
+      throw new SecurityException(s"Environment variable '$envName' is not in the allowedEnvVariables list")
+    }
+    System.getenv(envName)
+  }
 }
 
-case class JsEval(jsEngine: ScriptEngine, js: String) extends Evaluable {
-  override def eval(bindings: Map[String, Any]): AnyRef = {
-
-    val jsBindings = jsEngine.createBindings
-    bindings.foreach { case (k, v) => jsBindings.put(k, v) }
-
-    jsEngine.eval(js, jsBindings) match {
-      case `_: ScriptObjectMirror`(som) if som.isArray => som.to(classOf[Array[Any]]).toSeq
-      case som: Array[_] => som.toSeq
-      case v => v
-    }
-  }
+case class SafePathEval(expression: String) extends Evaluable {
+  override def eval(bindings: Map[String, Any], securityContext: TemplateSecurityContext): AnyRef =
+    SafePathEvaluator.eval(expression, bindings)
 }
 
 object EvaluableNames {
   val JVMProp = "$jvm"
   val EnvVar = "$env"
   val JsEval = "$js"
-
-  object `_: ScriptObjectMirror` extends SafeTypeMatchingExtractor(classOf[jdk.nashorn.api.scripting.ScriptObjectMirror])
 }

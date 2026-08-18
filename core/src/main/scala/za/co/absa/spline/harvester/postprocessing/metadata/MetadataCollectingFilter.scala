@@ -17,7 +17,6 @@
 package za.co.absa.spline.harvester.postprocessing.metadata
 
 import org.apache.commons.configuration.Configuration
-import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import za.co.absa.spline.commons.config.ConfigurationImplicits.ConfigurationRequiredWrapper
 import za.co.absa.spline.harvester.ExtraMetadataImplicits._
@@ -32,9 +31,9 @@ import scala.util.Try
 
 class MetadataCollectingFilter(rulesMap: Map[BaseNodeName.Type, Seq[RuleDef]]) extends PostProcessingFilter {
 
-  def this(conf: Configuration) = this(createRuleDefs(conf.getRequiredString(MetadataCollectingFilter.InjectRulesKey)))
+  def this(conf: Configuration) = this(createRuleDefs(conf))
 
-  def this(rulesJson: String) = this(createRuleDefs(rulesJson))
+  def this(rulesJson: String) = this(createRuleDefsFromJson(rulesJson))
 
   override def name = "Metadata collecting"
 
@@ -72,23 +71,28 @@ class MetadataCollectingFilter(rulesMap: Map[BaseNodeName.Type, Seq[RuleDef]]) e
 object MetadataCollectingFilter extends Logging {
 
   val InjectRulesKey = "rules"
+  val AllowedJvmPropertiesKey = "allowedJvmProperties"
+  val AllowedEnvVariablesKey = "allowedEnvVariables"
 
   case class RuleDef(nodeName: BaseNodeName.Type, predicate: Predicate, template: DataTemplate)
 
-  private def createRuleDefs(rulesJsonOrUrl: String): Map[BaseNodeName.Type, Seq[RuleDef]] = {
-    val rulesJson =
-      Try(new URL(rulesJsonOrUrl))
-        .toOption
-        .map(IOUtils.toString) // load from URL, or
-        .getOrElse(rulesJsonOrUrl) // treat it as JSON
+  private def createRuleDefs(conf: Configuration): Map[BaseNodeName.Type, Seq[RuleDef]] = {
+    val rulesJson = resolveRulesJson(conf.getRequiredString(InjectRulesKey))
+    val securityContext = securityContextFrom(conf)
+    createRuleDefsFromJson(rulesJson, securityContext)
+  }
 
+  private def createRuleDefsFromJson(
+    rulesJson: String,
+    securityContext: TemplateSecurityContext = TemplateSecurityContext()
+  ): Map[BaseNodeName.Type, Seq[RuleDef]] = {
     val extraDefMap = rulesJson
       .fromJson[Map[String, Map[String, Any]]]
       .toSeq
       .map {
         case (baseKey, extra) =>
           val (name, predicate) = PredicateParser.parse(baseKey)
-          val template = TemplateParser.parse(extra)
+          val template = TemplateParser.parse(extra, securityContext)
           RuleDef(name, predicate, template)
       }
       .groupBy(_.nodeName)
@@ -97,6 +101,25 @@ object MetadataCollectingFilter extends Logging {
 
     extraDefMap
   }
+
+  private def resolveRulesJson(rulesJsonOrUrl: String): String = {
+    val trimmed = rulesJsonOrUrl.trim
+    if (trimmed.startsWith("{")) {
+      trimmed
+    } else if (Try(new URL(trimmed)).isSuccess) {
+      throw new IllegalArgumentException(
+        "Loading metadata rules from a URL is not supported. Provide inline JSON in the rules property."
+      )
+    } else {
+      trimmed
+    }
+  }
+
+  private def securityContextFrom(conf: Configuration): TemplateSecurityContext =
+    TemplateSecurityContext(
+      allowedJvmProperties = Option(conf.getStringArray(AllowedJvmPropertiesKey)).map(_.toSet).getOrElse(Set.empty),
+      allowedEnvVariables = Option(conf.getStringArray(AllowedEnvVariablesKey)).map(_.toSet).getOrElse(Set.empty)
+    )
 
   private def evaluateRules(nodeName: BaseNodeName.Type, node: Any, defs: Seq[RuleDef], ctx: HarvestingContext): EvaluatedTemplate = {
     if (defs.isEmpty) {

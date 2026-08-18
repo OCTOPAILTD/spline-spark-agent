@@ -21,6 +21,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
 import za.co.absa.spline.HierarchicalObjectFactory.ClassName
 import za.co.absa.spline.commons.config.ConfigurationImplicits.ConfigurationRequiredWrapper
+import za.co.absa.spline.commons.security.ClassNameAllowlist
 
 import java.lang.reflect.InvocationTargetException
 import scala.reflect.ClassTag
@@ -32,13 +33,22 @@ final class HierarchicalObjectFactory(
   val parentFactory: HierarchicalObjectFactory = null
 ) extends Logging {
 
+  private lazy val extraClassPrefixes: Seq[String] =
+    if (parentFactory == null) {
+      Option(configuration.getStringArray(SecurityAllowedClassPrefixesKey))
+        .map(_.toSeq)
+        .getOrElse(Seq.empty)
+    } else {
+      parentFactory.extraClassPrefixes
+    }
+
   def child(namespace: String): HierarchicalObjectFactory = {
     new HierarchicalObjectFactory(configuration.subset(namespace), sparkSession, this)
   }
 
   def instantiate[A: ClassTag](className: String = configuration.getRequiredString(ClassName)): A = {
     logDebug(s"Instantiating $className")
-    val clazz = Class.forName(className.trim)
+    val clazz = ClassNameAllowlist.forName[A](className, extraClassPrefixes)
     try {
       Try(clazz.getConstructor(classOf[HierarchicalObjectFactory]).newInstance(this))
         .recover { case _: NoSuchMethodException =>
@@ -80,4 +90,5 @@ final class HierarchicalObjectFactory(
 
 object HierarchicalObjectFactory {
   final val ClassName = "className"
+  final val SecurityAllowedClassPrefixesKey = "spline.security.allowedClassPrefixes"
 }

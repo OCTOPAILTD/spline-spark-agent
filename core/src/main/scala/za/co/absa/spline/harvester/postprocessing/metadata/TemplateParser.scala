@@ -16,39 +16,36 @@
 
 package za.co.absa.spline.harvester.postprocessing.metadata
 
-import javax.script.{ScriptEngine, ScriptEngineManager}
-
 object TemplateParser {
 
-  def parse(templates: Map[String, Any]): DataTemplate = {
+  def parse(templates: Map[String, Any], securityContext: TemplateSecurityContext = TemplateSecurityContext()): DataTemplate = {
     val extraTemplate = getTemplate(templates, Key.Extra)
     val labelsTemplate = getTemplate(templates, Key.Labels)
     assert(extraTemplate.nonEmpty || labelsTemplate.nonEmpty)
 
-    val jsEngine = new ScriptEngineManager().getEngineByMimeType("text/javascript")
-
     new DataTemplate(
-      parseTemplate(extraTemplate, jsEngine),
-      parseTemplate(labelsTemplate, jsEngine)
+      parseTemplate(extraTemplate, securityContext),
+      parseTemplate(labelsTemplate, securityContext),
+      securityContext
     )
   }
 
   private def getTemplate(template: Map[String, Any], key: String) =
     template.get(key).map(_.asInstanceOf[Map[String, Any]]).getOrElse(Map.empty)
 
-  private def parseTemplate(template: Map[String, Any], jsEngine: ScriptEngine) =
-    template.transform((_, v) => parseRec(v, jsEngine))
+  private def parseTemplate(template: Map[String, Any], securityContext: TemplateSecurityContext) =
+    template.transform((_, v) => parseRec(v, securityContext))
 
-  private def parseRec(v: Any, jsEngine: ScriptEngine): Any = v match {
+  private def parseRec(v: Any, securityContext: TemplateSecurityContext): Any = v match {
     case m: Map[_, _] => m.toSeq match {
       case Seq((EvaluableNames.JVMProp, v: String)) => JVMProp(v)
       case Seq((EvaluableNames.EnvVar, v: String)) => EnvVar(v)
-      case Seq((EvaluableNames.JsEval, v: String)) => JsEval(jsEngine, v)
+      case Seq((EvaluableNames.JsEval, v: String)) => SafePathEval(v)
       case s: Seq[(_, _)] =>
         assert(!s.exists(_._1.toString.startsWith("$")))
-        s.map { case (k, v) => k -> parseRec(v, jsEngine) }.toMap
+        s.map { case (k, v) => k -> parseRec(v, securityContext) }.toMap
     }
-    case s: Seq[_] => s.map(parseRec(_, jsEngine))
+    case s: Seq[_] => s.map(parseRec(_, securityContext))
     case v => v
   }
 
