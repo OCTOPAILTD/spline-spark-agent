@@ -19,6 +19,7 @@ package za.co.absa.spline.harvester.conf
 import org.apache.commons.io.IOUtils
 import org.apache.commons.lang3.StringUtils.isBlank
 import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.constructor.SafeConstructor
 import za.co.absa.spline.commons.lang.ARM
 
 import java.net.URL
@@ -34,15 +35,25 @@ import scala.collection.JavaConverters._
 class YAMLConfiguration(yaml: String)
   extends ReadOnlyConfiguration {
 
-  def this(url: URL) = this(ARM.using(url.openStream())(IOUtils.toString))
+  def this(url: URL) = {
+    val protocol = url.getProtocol
+    if (protocol != "file" && protocol != "jar") {
+      throw new SecurityException(
+        s"YAML configuration only supports classpath resource URLs (file/jar), not: $protocol"
+      )
+    }
+    this(ARM.using(url.openStream())(IOUtils.toString))
+  }
 
   private val confMap: ju.Map[String, _ <: AnyRef] = {
     if (isBlank(yaml)) ju.Collections.emptyMap()
     else {
-      val yamlMap = (new Yaml).load[ju.Map[String, AnyRef]](yaml)
+      val yamlMap = yamlParser.loadAs(yaml, classOf[ju.Map[String, AnyRef]])
       populateRecursively("", yamlMap, new ju.HashMap[String, AnyRef]())
     }
   }
+
+  private def yamlParser = new Yaml(new SafeConstructor())
 
   private def populateRecursively(prefix: String, srcMap: ju.Map[String, AnyRef], dstMap: ju.Map[String, AnyRef]): ju.Map[String, AnyRef] = {
     srcMap.entrySet.asScala.foreach((entry: ju.Map.Entry[String, AnyRef]) => {

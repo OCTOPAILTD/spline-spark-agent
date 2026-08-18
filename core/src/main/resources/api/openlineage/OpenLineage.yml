@@ -6,12 +6,16 @@ info:
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
+security:
+  - bearerAuth: []
 paths:
   /lineage:
     post:
       summary: Send an event related to the state of a run
       description: Updates a run state for a job.
       operationId: postRunEvent
+      security:
+        - bearerAuth: []
       tags:
         - OpenLineage
       requestBody:
@@ -22,4 +26,11 @@ paths:
       responses:
         '200':
           description: OK
-
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Bearer access token. Configure OAuth2 client_credentials via the
+        httpOpenLineage dispatcher authentication settings in spline config.

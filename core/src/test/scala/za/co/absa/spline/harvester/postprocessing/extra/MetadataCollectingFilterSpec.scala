@@ -56,6 +56,15 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
   private val eventExtra = Map("foo" -> "a", "bar" -> false, "baz" -> Seq(1, 2, 3))
   private val ee = ExecutionEvent(UUID.randomUUID(), Map.empty, 66L, None, None, None, eventExtra)
 
+  private def configWithRules(rules: String, withJvmAndEnvAllowlist: Boolean = false): BaseConfiguration =
+    new BaseConfiguration {
+      addPropertyDirect(InjectRulesKey, rules)
+      if (withJvmAndEnvAllowlist) {
+        addPropertyDirect(AllowedJvmPropertiesKey, Array("some.jvm.prop"))
+        addPropertyDirect(AllowedEnvVariablesKey, Array("BAR_HOME"))
+      }
+    }
+
   behavior of "ExtraMetadataCollectingFilter"
 
   it should "parse and replace all variables with values" in {
@@ -80,9 +89,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
     System.setProperty("some.jvm.prop", "123")
     setEnv("BAR_HOME", "rabbit")
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString, withJvmAndEnvAllowlist = true)
 
     val filter = new MetadataCollectingFilter(config)
 
@@ -113,9 +120,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
         |}
         |""".stripMargin
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString)
 
     val filter = new MetadataCollectingFilter(config)
 
@@ -155,9 +160,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
     System.setProperty("some.jvm.prop", "123")
     setEnv("BAR_HOME", "rabbit")
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString, withJvmAndEnvAllowlist = true)
 
     val filter = new MetadataCollectingFilter(config)
 
@@ -200,9 +203,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
         |}
         |""".stripMargin
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString)
 
     val filter = new MetadataCollectingFilter(config)
 
@@ -239,9 +240,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
         |}
         |""".stripMargin
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString)
 
     val filter = new MetadataCollectingFilter(config)
 
@@ -276,9 +275,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
         |}
         |""".stripMargin
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString)
 
     val filter = new MetadataCollectingFilter(config)
 
@@ -302,9 +299,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
         |}
         |""".stripMargin
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString)
 
     val filter = new MetadataCollectingFilter(config)
 
@@ -324,9 +319,7 @@ class MetadataCollectingFilterSpec extends AnyFlatSpec with EnvFixture with Matc
         |}
         |""".stripMargin
 
-    val config = new BaseConfiguration {
-      addPropertyDirect(InjectRulesKey, configString)
-    }
+    val config = configWithRules(configString)
 
     (the[IllegalArgumentException] thrownBy new MetadataCollectingFilter(config)).getMessage should include("Labels are not supported")
   }

@@ -27,7 +27,6 @@ object HttpOpenLineageDispatcherConfig {
   val apiUrlProperty = "api.url"
   val ConnectionTimeoutMsKey = "timeout.connection"
   val ReadTimeoutMsKey = "timeout.read"
-  val DisableSslValidation = "disableSslValidation"
   val ApiVersion = "apiVersion"
   val Namespace = "namespace"
   val Header = "header"
@@ -40,7 +39,6 @@ class HttpOpenLineageDispatcherConfig(config: Configuration) {
   val apiUrl: String = config.getRequiredString(apiUrlProperty)
   val connTimeout: Duration = config.getRequiredLong(ConnectionTimeoutMsKey).millis
   val readTimeout: Duration = config.getRequiredLong(ReadTimeoutMsKey).millis
-  val disableSslValidation: Boolean = config.getRequiredBoolean(DisableSslValidation)
   val apiVersion: Version = Version.asSimple(config.getRequiredString(ApiVersion))
   val namespace: String = config.getRequiredString(Namespace)
   val headers: Map[String, String] = config.subset(Header).toMap[String]

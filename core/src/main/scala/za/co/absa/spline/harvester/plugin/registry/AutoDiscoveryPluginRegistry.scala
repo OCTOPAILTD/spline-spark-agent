@@ -21,6 +21,7 @@ import org.apache.commons.configuration.Configuration
 import org.apache.commons.lang.ClassUtils.{getAllInterfaces, getAllSuperclasses}
 import org.apache.spark.internal.Logging
 import za.co.absa.spline.commons.lang.ARM
+import za.co.absa.spline.commons.security.ClassNameAllowlist
 import za.co.absa.spline.harvester.plugin.Plugin.Precedence
 import za.co.absa.spline.harvester.plugin.{Plugin, PluginsConfiguration}
 
@@ -126,7 +127,7 @@ object AutoDiscoveryPluginRegistry extends Logging {
       key <- conf.getKeys.asScala.toSeq
       if key.endsWith(s".$EnabledConfProperty") // Looking for keys ending with ".enabled", since plugins must be explicitly enabled
       className = key.dropRight(EnabledConfProperty.length + 1) // Dropping ".enabled" to get plugin class name
-      cls = Class.forName(className)
+      cls = ClassNameAllowlist.forName[Plugin](className)
       if classOf[Plugin].isAssignableFrom(cls)
     } yield {
       logDebug(s"Found registered plugin: $cls")

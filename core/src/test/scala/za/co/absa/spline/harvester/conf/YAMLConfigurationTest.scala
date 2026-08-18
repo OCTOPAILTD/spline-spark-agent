@@ -96,4 +96,15 @@ class YAMLConfigurationTest extends ReadOnlyConfigurationTest {
   test("get heterogeneous list") {
     givenConf getList "spline.heterogeneousValues" should contain theSameElementsInOrderAs Seq(1.2, 42, true, "foo")
   }
+
+  test("reject unsafe YAML object tags") {
+    val malicious =
+      """
+        |spline:
+        |  x: !!javax.script.ScriptEngineManager [ ]
+        |""".stripMargin
+    intercept[Exception] {
+      new YAMLConfiguration(malicious).getProperty("spline.x")
+    }
+  }
 }
