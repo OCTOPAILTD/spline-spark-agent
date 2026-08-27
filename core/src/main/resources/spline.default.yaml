@@ -140,7 +140,12 @@ spline:
     # -------------------------------------------
     hdfs:
       className: za.co.absa.spline.harvester.dispatcher.HDFSLineageDispatcher
-      # Output lineage file will be created alongside the target data file
+      # Base directory for lineage output. Also settable via
+      # spark.spline.lineageDispatcher.hdfs.directory. Supports file://, hdfs://, s3:// URIs.
+      # Lineage is written to <directory>/<planName>/<runID>/lineage_<planId>.json;
+      # older run folders for the same job are removed (keep-last-run).
+      directory: file:///tmp/spline
+      # Retained for backward compatibility; not used for the run-folder output file name.
       fileName: _LINEAGE
       # the size of the buffer to be used
       fileBufferSize: 4096
