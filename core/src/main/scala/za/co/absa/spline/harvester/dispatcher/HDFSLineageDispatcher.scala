@@ -36,11 +36,12 @@ import scala.concurrent.blocking
 import scala.util.control.NonFatal
 
 @Experimental
-class HDFSLineageDispatcher(filename: String, permission: FsPermission, bufferSize: Int)
+class HDFSLineageDispatcher(directory: String, filename: String, permission: FsPermission, bufferSize: Int)
   extends LineageDispatcher
     with Logging {
 
   def this(conf: Configuration) = this(
+    directory = conf.getOptionalString(DirectoryKey).getOrElse(DefaultDirectory),
     filename = conf.getRequiredString(FileNameKey),
     permission = new FsPermission(conf.getRequiredObject(FilePermissionsKey).toString),
     bufferSize = conf.getRequiredInt(BufferSizeKey)
@@ -60,12 +61,10 @@ class HDFSLineageDispatcher(filename: String, permission: FsPermission, bufferSi
       throw new IllegalStateException("send(event) must be called strictly after send(plan) method with matching plan ID")
 
     try {
-      val sparkContext = SparkContext.getOrCreate()
-
-      val lineageBaseDir = sparkContext.getConf.get(
-        "spark.spline.lineageDispatcher.hdfs.directory",
-        "file:///C:/tmp" // Default to local storage on Windows
-      )
+      // Output base directory comes from the dispatcher config (`directory` key). Because Spline
+      // lifts `spark.spline.*` Spark-conf entries into the dispatcher config subtree, this is also
+      // settable via `spark.spline.lineageDispatcher.hdfs.directory`.
+      val lineageBaseDir = directory
 
       val executionPlanID = this._lastSeenPlan.id.getOrElse("unknown_plan")
       val executionPlanName = this._lastSeenPlan.name.replaceAll("[^a-zA-Z0-9_\\-]", "_")
@@ -192,9 +191,12 @@ class HDFSLineageDispatcher(filename: String, permission: FsPermission, bufferSi
 object HDFSLineageDispatcher {
   private val HadoopConfiguration = SparkContext.getOrCreate().hadoopConfiguration
 
+  private val DirectoryKey = "directory"
   private val FileNameKey = "fileName"
   private val FilePermissionsKey = "filePermissions"
   private val BufferSizeKey = "fileBufferSize"
+
+  private val DefaultDirectory = "file:///tmp/spline"
 
   /**
    * Converts string full path to Hadoop FS and Path, e.g.
